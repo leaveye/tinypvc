@@ -2,7 +2,7 @@
 TGTS := testpvc testshortclt testshortsrv
 
 CC := gcc
-CFLAGS := -Wall -g -O0
+CFLAGS := -Wall -g -O0 -DPROFILE=1
 LDADD := -lpthread
 
 .PHONY: all test clean
@@ -20,7 +20,7 @@ $(TGTS):
 .PHONY: $(addprefix runtest-,$(TGTS))
 test: $(addprefix runtest-,$(TGTS))
 $(addprefix runtest-,$(TGTS)): runtest-%: %
-$(addprefix runtest-,testpvc testshortclt):
+runtest-testpvc:
 	./runtest.sh ./$< 2000 /dev/null
 
 clean:

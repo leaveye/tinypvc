@@ -80,14 +80,27 @@ void *server_thread( void *arg )
 
     if ( ctx->running && *ctx->running ) do {
         char buf[0x1000];
-        size_t bufsz = sizeof(buf), buflen = 0;
+        size_t bufsz = sizeof(buf), buflen = 0, bufgot = 0;
         int ret;
 
-        ret = recv( ctx->fd, buf, bufsz, 0 );
+        ret = recv( ctx->fd, &buflen, sizeof(buflen), 0 );
         if ( ret < 0 ) {
             printf( "Err: recv(%d): E%d: %s\n", ctx->fd, errno, strerror( errno ) );
             break;
         } else if ( ret == 0 )
+            break;
+        assert( ret == sizeof(buflen) );
+        assert( buflen <= bufsz );
+
+        for ( bufgot=0; bufgot<buflen; bufgot+=ret ) {
+            ret = recv( ctx->fd, buf+bufgot, buflen-bufgot, 0 );
+            if ( ret < 0 ) {
+                printf( "Err: recv(%d): E%d: %s\n", ctx->fd, errno, strerror( errno ) );
+                break;
+            } else if ( ret == 0 )
+                break;
+        }
+        if ( ret <= 0 )
             break;
 
         buflen = ret;
@@ -97,6 +110,13 @@ void *server_thread( void *arg )
             break;
         }
         buflen += ret;
+
+        ret = send( ctx->fd, &buflen, sizeof(buflen), 0 );
+        if ( ret < 0 ) {
+            printf( "Err: send(%d): E%d: %s\n", ctx->fd, errno, strerror( errno ) );
+            break;
+        } else if ( ret == 0 )
+            break;
 
         ret = send( ctx->fd, buf, buflen, 0 );
         if ( ret < 0 ) {
