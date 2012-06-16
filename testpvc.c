@@ -25,6 +25,13 @@
 #include <pthread.h>
 #include "pvc.h"
 
+#if PROFILE
+#ifdef printf
+#undef printf
+#endif
+#define printf(fmt,args...) ((void)(fmt,##args))
+#endif
+
 typedef struct {
     int running;
     int acc_max;

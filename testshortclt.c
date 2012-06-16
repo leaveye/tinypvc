@@ -27,6 +27,13 @@
 #include <sys/socket.h>
 #include "pvc.h"
 
+#if PROFILE
+#ifdef printf
+#undef printf
+#endif
+#define printf(fmt,args...) ((void)(fmt,##args))
+#endif
+
 typedef struct {
     int *running;
     int *threads;
@@ -59,6 +66,10 @@ typedef struct {
     uint32_t tags[3];
 } data_t;
 
+#define SHOW_INFO(c,caption,idx,info,value) \
+    printf( "%c#%d:\tthread #%d(%c%d): tid=%p, produce: l=%zd, data={%u,%u}\n",\
+            (c), (idx), ((const pvc_info_t *)(info))->index, (c), ((const pvc_info_t *)(info))->sub_index, pthread_self(),\
+            (caption), ((data_t*)(value))->len, ((data_t*)(value))->tags[0], ((data_t*)(value))->tags[1] )
 static int produce_data( void *ctx, void **pdata )
 {
     const pvc_info_t * const info = pvc_get_info();

@@ -1,5 +1,5 @@
 
-TGTS := testpvc testshortsrv testshortclt
+TGTS := testpvc testshortclt testshortsrv
 
 CC := gcc
 CFLAGS := -Wall -g -O0
@@ -17,8 +17,11 @@ testshortclt: testshortclt.c sender.c sender.h recver.c recver.h
 $(TGTS):
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(filter %.c %.o,$^) $(LDADD)
 
-test: $(TGTS)
-	./ntestpvc.sh /dev/null 2000
+.PHONY: $(addprefix runtest-,$(TGTS))
+test: $(addprefix runtest-,$(TGTS))
+$(addprefix runtest-,$(TGTS)): runtest-%: %
+$(addprefix runtest-,testpvc testshortclt):
+	./runtest.sh ./$< 2000 /dev/null
 
 clean:
 	-rm -rf $(TGTS) $(wildcard *.o *.dSYM)
