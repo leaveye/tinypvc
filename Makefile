@@ -1,8 +1,10 @@
 
 TGTS := testpvc testshortclt testshortsrv
 
+PROFILE?=0
+
 CC := gcc
-CFLAGS := -Wall -g -O0 -DPROFILE=1
+CFLAGS := -Wall -g -O0 -DPROFILE=$(PROFILE)
 LDADD := -lpthread
 
 .PHONY: all test clean

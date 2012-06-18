@@ -83,6 +83,10 @@ static void handle_signals( void (*func)( int ), ... )
     va_end( ap );
 }
 
+#if PROFILE
+#undef printf
+#endif
+
 int main( int argc, char *argv[] )
 {
     prog_context_t ctx = { 1 };

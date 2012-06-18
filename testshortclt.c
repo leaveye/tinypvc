@@ -221,6 +221,10 @@ static void handle_signals( void (*func)( int ), ... )
     va_end( ap );
 }
 
+#if PROFILE
+#undef printf
+#endif
+
 int main( int argc, char *argv[] )
 {
     int running = 1;
@@ -233,7 +237,7 @@ int main( int argc, char *argv[] )
     setbuf( stdout, NULL );
 
     if ( argc > 1 && !strcmp( argv[ argc - 1 ], "-h" ) ) {
-        printf( "Usage: %s [NPROD] [NXMIT] [NCONS] [ELEMS]\n", argv[0] );
+        printf( "Usage: %s [IP] [PORT] [NPROD] [NXMIT] [NCONS] [ELEMS]\n", argv[0] );
         exit( 0 );
     }
 
