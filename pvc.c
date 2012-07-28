@@ -43,17 +43,20 @@ typedef struct {
     ring_buffer_t *ring_buffer;
     void *callback;
     pthread_mutex_t *callback_mutex;
+    pthread_mutex_t *inited_mutex;
     void *arg;
 } thread_context_t;
 
 #define PVC_STATUS_CONSUMER_RUNNING 0x01
 #define PVC_STATUS_PRODUCER_RUNNING 0x02
+#define PVC_STATUS_LAUNCHING 0x4000
 #define PVC_STATUS_CLEANNING 0x8000
 
 struct pvc_s {
     int status;
     c_linklist_t * thread_contexts;
     ring_buffer_t ring_buffer;
+    pthread_mutex_t mutex_inited;
     pthread_mutex_t mutex_producer;
     pthread_mutex_t mutex_consumer;
     unsigned int n_producer, n_consumer;
@@ -86,30 +89,6 @@ int ring_buffer_full( ring_buffer_t *rb )
 
     return result;
 }
-int ring_buffer_append( ring_buffer_t *rb, void *data )
-{
-    pthread_mutex_t * const mutex = &rb->mutex;
-    int to_signal = 0;
-
-    pthread_mutex_lock( mutex );
-    if ( (rb->tail + 1) % rb->size == rb->head ) {
-        rb->user_count++;
-        pthread_cond_wait( &rb->not_full, mutex );
-        rb->user_count--;
-    }
-    if ( (rb->tail + 1) % rb->size != rb->head ) {
-        //printf( "rb: %s elems[%zd]=%p\n", __func__+12, rb->tail, data );
-        rb->elems[ rb->tail ] = data;
-        rb->tail = (rb->tail + 1) % rb->size;
-        to_signal = 1;
-    }
-    pthread_mutex_unlock( mutex );
-
-    if ( to_signal )
-        pthread_cond_signal( &rb->not_empty );
-
-    return 0;
-}
 int ring_buffer_prepend( ring_buffer_t *rb, void *data )
 {
     pthread_mutex_t * const mutex = &rb->mutex;
@@ -125,6 +104,30 @@ int ring_buffer_prepend( ring_buffer_t *rb, void *data )
         rb->head = (rb->head + rb->size - 1) % rb->size;
         rb->elems[ rb->head ] = data;
         //printf( "rb: %s elems[%zd]=%p\n", __func__+12, rb->head, data );
+        to_signal = 1;
+    }
+    pthread_mutex_unlock( mutex );
+
+    if ( to_signal )
+        pthread_cond_signal( &rb->not_empty );
+
+    return 0;
+}
+int ring_buffer_append( ring_buffer_t *rb, void *data )
+{
+    pthread_mutex_t * const mutex = &rb->mutex;
+    int to_signal = 0;
+
+    pthread_mutex_lock( mutex );
+    if ( (rb->tail + 1) % rb->size == rb->head ) {
+        rb->user_count++;
+        pthread_cond_wait( &rb->not_full, mutex );
+        rb->user_count--;
+    }
+    if ( (rb->tail + 1) % rb->size != rb->head ) {
+        //printf( "rb: %s elems[%zd]=%p\n", __func__+12, rb->tail, data );
+        rb->elems[ rb->tail ] = data;
+        rb->tail = (rb->tail + 1) % rb->size;
         to_signal = 1;
     }
     pthread_mutex_unlock( mutex );
@@ -170,6 +173,7 @@ void pvc_close( pvc_t pvc )
     if ( !pvc )
         return;
 
+    pthread_mutex_destroy( &pvc->mutex_inited );
     pthread_mutex_destroy( &pvc->mutex_producer );
     pthread_mutex_destroy( &pvc->mutex_consumer );
 
@@ -200,6 +204,7 @@ pvc_t pvc_open( size_t max_elems )
     pthread_cond_init( &pvc->ring_buffer.not_empty, NULL );
     pthread_cond_init( &pvc->ring_buffer.not_full, NULL );
 
+    pthread_mutex_init( &pvc->mutex_inited, NULL );
     pthread_mutex_init( &pvc->mutex_producer, NULL );
     pthread_mutex_init( &pvc->mutex_consumer, NULL );
 
@@ -221,6 +226,9 @@ static void * _pvc_producer_thread( void *args )
     void * data = NULL;
 
     pthread_setspecific( _pvc_info_key, info );
+
+    pthread_mutex_lock( ctx->inited_mutex );
+    pthread_mutex_unlock( ctx->inited_mutex );
 
     while ( data || ( *ctx->status & PVC_STATUS_PRODUCER_RUNNING ) ) {
         if ( !data ) {
@@ -294,9 +302,13 @@ static void * _pvc_consumer_thread( void *args )
 
     pthread_setspecific( _pvc_info_key, info );
 
+    pthread_mutex_lock( ctx->inited_mutex );
+    pthread_mutex_unlock( ctx->inited_mutex );
+
     while ( data || ( *ctx->status & PVC_STATUS_CONSUMER_RUNNING ) ) {
         if ( !data ) {
             data = ring_buffer_pop( rb );
+            printf( "    \tthread #%d(C%d): tid=%p, poped %d\n", info->index, info->sub_index, pthread_self(), data?*(int*)data:-1 );
         } else {
             pthread_mutex_lock( ctx->callback_mutex );
             consume( arg, data );
@@ -357,6 +369,7 @@ thread_context_t * _pvc_start_cleaner( pvc_t pvc, pvc_cb_consume_func_t func, vo
     ctx->ring_buffer = &pvc->ring_buffer;
     ctx->callback = (void*)func;
     ctx->callback_mutex = &pvc->mutex_consumer;
+    ctx->inited_mutex = &pvc->mutex_inited;
     ctx->status = &pvc->status;
     ctx->info.type = PVC_CONSUMER;
     ctx->arg = arg;
@@ -379,6 +392,8 @@ int pvc_start( pvc_t pvc, void *arg )
 
     assert( ! ( pvc->status & (PVC_STATUS_PRODUCER_RUNNING|PVC_STATUS_CONSUMER_RUNNING) ) );
     pvc->status |= PVC_STATUS_PRODUCER_RUNNING|PVC_STATUS_CONSUMER_RUNNING;
+
+    pthread_mutex_lock( &pvc->mutex_inited );
 
     for ( C_linklist_move_head( l ), i=0;
           (ctx = C_linklist_restore( l )) != NULL;
@@ -417,6 +432,8 @@ int pvc_start( pvc_t pvc, void *arg )
         printf( "start:\tthread #%d(%s%d): tid=%p\n", ctx->info.index, stype, ctx->info.sub_index, ctx->tid );
     }
     printf( "start:\ttotal: %d producers, %d consumers\n", pvc->n_producer, pvc->n_consumer );
+
+    pthread_mutex_unlock( &pvc->mutex_inited );
 
     return 0;
 }
@@ -545,6 +562,7 @@ static inline int _pvc_add_thread( pvc_t pvc, void *callback, pvc_type_t type, p
     ctx->ring_buffer = &pvc->ring_buffer;
     ctx->callback = callback;
     ctx->callback_mutex = mutex;
+    ctx->inited_mutex = &pvc->mutex_inited;
     ctx->status = &pvc->status;
     ctx->info.type = type;
 
@@ -574,12 +592,14 @@ int pvc_chain( pvc_t src, pvc_t dst, pvc_cb_chain_func_t func, int count )
         ctx[0].ring_buffer = &src->ring_buffer;
         ctx[0].callback = func;
         ctx[0].callback_mutex = &src->mutex_consumer;
+        ctx[0].inited_mutex = &src->mutex_inited;
         ctx[0].status = &src->status;
         ctx[0].info.type = PVC_CHAINED_CONSUMER;
 
         ctx[1].ring_buffer = &dst->ring_buffer;
         ctx[1].callback = NULL;
         ctx[1].callback_mutex = &dst->mutex_producer;
+        ctx[1].inited_mutex = &dst->mutex_inited;
         ctx[1].status = &dst->status;
         ctx[1].info.type = PVC_CHAINED_PRODUCER;
 

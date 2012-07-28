@@ -7,7 +7,7 @@ CC := gcc
 CFLAGS := -Wall -g -O0 -DPROFILE=$(PROFILE)
 LDADD := -lpthread
 
-.PHONY: all test clean
+.PHONY: all check clean
 
 all: $(TGTS)
 
@@ -19,10 +19,10 @@ testshortclt: testshortclt.c sender.c sender.h recver.c recver.h
 $(TGTS):
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(filter %.c %.o,$^) $(LDADD)
 
-.PHONY: $(addprefix runtest-,$(TGTS))
-test: $(addprefix runtest-,$(TGTS))
-$(addprefix runtest-,$(TGTS)): runtest-%: %
-runtest-testpvc:
+.PHONY: $(addprefix check-,$(TGTS))
+check: $(addprefix check-,$(TGTS))
+$(addprefix check-,$(TGTS)): check-%: %
+check-testpvc:
 	./runtest.sh ./$< 2000 /dev/null
 
 clean:

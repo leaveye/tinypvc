@@ -14,7 +14,7 @@ for i in `seq $COUNT`
 do
     echo -e -n '\r'
     echo -e -n "round #$i: "
-    eval "$APP &>$LOGFILE" || exit 1
+    eval "$APP &>$LOGFILE" || { echo failed; exit 1; }
     echo -e -n "ok"
 done
 echo -e "\rAll $COUNT rounds done."

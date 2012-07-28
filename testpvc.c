@@ -48,7 +48,7 @@ static int produce_data( void *ctx, void **pdata )
     *value = 1 + c->acc;
     c->acc = ( c->acc + 1 ) % c->acc_max;
     *pdata = value;
-    printf( "P#%d:\tthread #%d(P%d): tid=%p, produce %d\n", ++c->counter_p, info->index, info->sub_index, pthread_self(), *value );
+    printf( "P#%d:\tthread #%d(P%d): tid=%p, produce %d(%p)\n", ++c->counter_p, info->index, info->sub_index, pthread_self(), *value, value );
     //usleep( 997 ); // to simulate I/O blocking
     return 0;
 }
@@ -58,7 +58,7 @@ static int consume_data( void *ctx, void *data )
     prog_context_t * const c = ctx;
     int *value = data;
     //usleep( 1313 ); // to simulate I/O blocking
-    printf( "C#%d:\tthread #%d(C%d): tid=%p, consume %d\n", ++c->counter_c, info->index, info->sub_index, pthread_self(), *value );
+    printf( "C#%d:\tthread #%d(C%d): tid=%p, consume %d(%p)\n", ++c->counter_c, info->index, info->sub_index, pthread_self(), *value, value );
     free( value );
     return 0;
 }
@@ -124,11 +124,16 @@ int main( int argc, char *argv[] )
     pvc_start( pvc, &ctx );
 
     //while ( ctx.running )
-        usleep( 100 );
+        usleep( 5000 );
 
     pvc_stop( pvc, consume_data, &ctx );
 
+    printf( "summary: produced=%d, consumed=%d\n", ctx.counter_p, ctx.counter_c );
+
     pvc_close( pvc );
+
+    if ( ctx.counter_c != ctx.counter_p )
+        exit( -1 );
 
     return 0;
 }
